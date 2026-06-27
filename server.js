@@ -6,18 +6,6 @@
  * + Shop Integration (Stripe, Products, Webhooks)
  * + QR Code Redirect System (user-editable via /account)
  * ---------------------------------------------------------------------
- *
- * PRODUCTION FIXES (Render deployment):
- *
- * 1. AdminJS env flag — passes NODE_ENV into the AdminJS instance.
- * 2. bundleDir — tells AdminJS exactly where the pre-built bundle lives
- * so it never re-bundles on startup in production.
- * 3. Static bundle route — serves .adminjs/ under the admin path.
- * 4. CSRF bypass uses req.originalUrl (not req.path).
- * 5. IP whitelist skipped when ALLOWED_IP is blank (rely on secret URL).
- * 6. Admin cookie sameSite:'none' on HTTPS for Render's redirect flow.
- * 7. AdminJS mounts BEFORE body parsers and main app session.
- * ---------------------------------------------------------------------
  */
 import 'dotenv/config';
 import path from "path";
@@ -67,11 +55,14 @@ const contactController = require("./controllers/contact.cjs");
 // ── Shop controller ──────────────────────────────────────────────────────────
 import * as shopController from './controllers/shop.js';
 
-// ── QR controller (update-destination PUT endpoint) ─────────────────────────
+// ── QR controller ────────────────────────────────────────────────────────────
 import { updateDestination } from './controllers/qrController.js';
 
-// ── QR Redirect model (single source of truth — replaces inline schema below) ─
+// ── Models ───────────────────────────────────────────────────────────────────
+// QRRedirect: single source of truth for the QRcoderedirect1 collection
 import QRRedirect from './models/QRcoderedirect1.js';
+// User: imported so AdminJS can resolve the ownerId ref without 500 errors
+import UserModel from './models/User.js';
 
 const passportConfig = require('./config/passport.cjs');
 const { flash }        = require("./config/flash.cjs");
@@ -101,15 +92,11 @@ const chatbotLimiter = rateLimit({
 });
 
 const IS_PRODUCTION  = process.env.NODE_ENV === 'production';
-const secureTransfer = IS_PRODUCTION || process.env.BASE_URL?.startsWith("https") || false;
-
-// ADMIN_PATH: strip any accidental leading slash from the env var, then add one.
-// Render env var should be:  ADMIN_PATH=electric-puffin-vault-12  (no slash)
 const ADMIN_PATH = `/${(process.env.ADMIN_PATH || 'electric-puffin-vault-12').trim().replace(/^\//, '')}`;
 
 /** --------------------------
  * MONGOOSE MODELS
- * (QRRedirect is now imported from models/QRcoderedirect1.js above)
+ * (QRRedirect and UserModel imported above)
  * -------------------------- */
 const reviewSchema = new mongoose.Schema({
     name: String, stars: { type: Number, min: 1, max: 5 }, review_text: String,
@@ -135,7 +122,6 @@ const alertSchema = new mongoose.Schema({
 });
 const Alert = mongoose.models.Alert || mongoose.model('Alert', alertSchema);
 
-// ── Analytics: one document = one unique visitor session ─────────────────────
 const analyticsSchema = new mongoose.Schema({
     path:      { type: String },
     source:    { type: String, default: 'direct' },
@@ -185,17 +171,13 @@ const maskName = (name) => {
     return str.substring(0, 2) + "*".repeat(str.length - 2);
 };
 
-// ── AdminJS IP Whitelist ──────────────────────────────────────────────────────
 const ipWhitelist = (req, res, next) => {
     const allowed = (process.env.ALLOWED_IP || '').trim();
     if (!allowed) return next();
-
     const clientIp = (req.ips && req.ips.length > 0) ? req.ips[0] : (req.ip || '');
     const isLocal  = ['::1', '127.0.0.1', '::ffff:127.0.0.1'].includes(clientIp)
         || clientIp.startsWith('::ffff:127.');
-
     if (isLocal || clientIp === allowed) return next();
-
     console.warn(`[AdminJS] Blocked IP: ${clientIp}`);
     res.status(404).send('Not Found');
 };
@@ -208,10 +190,7 @@ app.set("host", "0.0.0.0");
 app.set("port", process.env.PORT || 8080);
 app.set("views", path.join(__dirname, "views"));
 app.set("view engine", "pug");
-
-// trust proxy MUST be set before AdminJS mounts so req.ips is populated.
 app.set("trust proxy", 1);
-
 app.use(morganLogger());
 app.use(compression());
 app.disable("x-powered-by");
@@ -223,11 +202,41 @@ async function buildAndMountAdminJS() {
     const SESSION_SECRET = (process.env.SESSION_SECRET || 'hydro-sweep-admin-secret-32-chars').trim();
     const ADMIN_EMAIL    = (process.env.ADMIN_EMAIL    || '').trim();
     const ADMIN_PASS     = (process.env.ADMIN_PASSWORD || '').trim();
-
-    const bundleDir = path.join(__dirname, '.adminjs');
+    const bundleDir      = path.join(__dirname, '.adminjs');
 
     const adminConfig = {
         resources: [
+            // ── FIX: User must be registered FIRST so AdminJS can resolve
+            //    the ownerId ObjectId reference without throwing 500 errors ──
+            {
+                resource: UserModel,
+                options: {
+                    id: 'User',
+                    navigation: {
+                        name: 'Users',
+                        icon: 'User',
+                    },
+                    // Only show safe read-only fields — never expose password hash
+                    properties: {
+                        password:               { isVisible: false },
+                        tokens:                 { isVisible: false },
+                        loginToken:             { isVisible: false },
+                        loginExpires:           { isVisible: false },
+                        loginIpHash:            { isVisible: false },
+                        passwordResetToken:     { isVisible: false },
+                        passwordResetExpires:   { isVisible: false },
+                        emailVerificationToken: { isVisible: false },
+                        _id:   { isTitle: false },
+                        email: { isTitle: true },
+                    },
+                    actions: {
+                        // Disable delete and edit from AdminJS to prevent accidents
+                        delete: { isAccessible: false },
+                        edit:   { isAccessible: false },
+                        new:    { isAccessible: false },
+                    },
+                },
+            },
             Review,
             Response,
             Contact,
@@ -237,36 +246,52 @@ async function buildAndMountAdminJS() {
             {
                 resource: QRRedirect,
                 options: {
-                    id: 'QR Code URL Redirect',
+                    id: 'QRcoderedirect1',
                     navigation: {
-                        name: 'test',
-                        icon: 'Link'
+                        name: 'QR Redirects',
+                        icon: 'Link',
                     },
                     properties: {
                         page_title: {
                             label: 'Page Title',
-                            description: 'The title that appears in the browser tab'
+                            description: 'The title shown on the interim redirect page',
                         },
                         ownerId: {
                             label: 'Owner (User ID)',
                             description: 'MongoDB ObjectId of the user who can edit this redirect. Leave blank for admin-only.',
+                            // ── FIX: tell AdminJS this references the User resource
+                            reference: 'User',
                         },
                         canEdit: {
                             label: 'Allow User Edits',
                             description: 'If false, the Save button on the user account page is locked.',
                         },
-                    }
-                }
-            }
+                        hardcoded_url: {
+                            label: 'Hardcoded URL (Locked)',
+                            description: 'The short URL printed on the QR code. Never changes.',
+                        },
+                        destination_url: {
+                            label: 'Destination URL',
+                            description: 'Where the scanner is sent after the delay.',
+                        },
+                        redirect_delay_seconds: {
+                            label: 'Redirect Delay (seconds)',
+                            description: 'How long the interim page shows before redirecting. 0 = instant.',
+                        },
+                        active: {
+                            label: 'Active',
+                            description: 'If false, the route returns 404 to scanners.',
+                        },
+                    },
+                },
+            },
         ],
 
         rootPath: ADMIN_PATH,
         loginPath: `${ADMIN_PATH}/login`,
         logoutPath: `${ADMIN_PATH}/logout`,
         componentLoader,
-        env: {
-            NODE_ENV: process.env.NODE_ENV || 'development',
-        },
+        env: { NODE_ENV: process.env.NODE_ENV || 'development' },
         branding: { companyName: 'Hydro Sweep Services', withMadeWithLove: false },
         dashboard: {
             component: Components.Dashboard,
@@ -311,6 +336,9 @@ async function buildAndMountAdminJS() {
                     sourcesAllTime,
                     viewsByPath,
                     lastLogin,
+                    qrTotalRoutes,
+                    qrActiveRoutes,
+                    qrList,
                 ] = await Promise.all([
                     Analytics.countDocuments({ timestamp: { $gte: startOfToday } }),
                     Analytics.countDocuments({ timestamp: { $gte: start7Days } }),
@@ -333,6 +361,13 @@ async function buildAndMountAdminJS() {
                     sourceAggregation({}),
                     pathAggregation(),
                     LastLoggedIn.findOne().sort({ loginAt: -1 }).lean(),
+                    QRRedirect.countDocuments(),
+                    QRRedirect.countDocuments({ active: true }),
+                    QRRedirect.find()
+                        .sort({ createdAt: -1 })
+                        .limit(10)
+                        .select('route company_name destination_url active')
+                        .lean(),
                 ]);
 
                 const normaliseSources = (arr) => {
@@ -356,6 +391,11 @@ async function buildAndMountAdminJS() {
                     sourcesAllTime: normaliseSources(sourcesAllTime),
                     viewsByPath,
                     lastLogin: lastLogin ? lastLogin.loginAt : null,
+                    qrData: {
+                        totalRoutes:  qrTotalRoutes,
+                        activeRoutes: qrActiveRoutes,
+                        list:         qrList,
+                    },
                 };
             }
         },
@@ -419,13 +459,10 @@ async function startServer() {
     await mongoose.connect(process.env.MONGODB_URI);
     console.log("Mongoose Connected ✅");
 
-    // Shop Stripe webhook (raw body required — must precede body parsers)
     app.post('/webhook', express.raw({ type: 'application/json' }), shopController.stripeWebhookRaw);
 
-    // AdminJS mounts FIRST — before body parsers and main session
     await buildAndMountAdminJS();
 
-    // ── Body Parsers (skip for AdminJS routes) ────────────────────────────────
     app.use((req, res, next) => {
         if (req.originalUrl.startsWith(ADMIN_PATH)) return next();
         express.json()(req, res, (err) => {
@@ -440,16 +477,12 @@ async function startServer() {
         });
     });
 
-    // ── Global App Session ────────────────────────────────────────────────────
     app.use(session({
         resave: true,
         saveUninitialized: false,
         secret: process.env.SESSION_SECRET || 'dev-secret',
         name: "startercookie",
-        cookie: {
-            maxAge: 1209600000,
-            secure: IS_PRODUCTION
-        },
+        cookie: { maxAge: 1209600000, secure: IS_PRODUCTION },
         store: MongoStore.create({ mongoUrl: process.env.MONGODB_URI }),
     }));
 
@@ -457,9 +490,6 @@ async function startServer() {
     app.use(passport.session());
     app.use(flash);
 
-    // ── CSRF Protection ───────────────────────────────────────────────────────
-    // The /dashboard/update-destination PUT uses X-CSRF-Token header which
-    // Lusca validates automatically — no bypass needed for that route.
     app.use((req, res, next) => {
         if (
             req.originalUrl === "/api/upload" ||
@@ -485,9 +515,6 @@ async function startServer() {
     app.use("/js/lib", express.static(path.join(__dirname, "node_modules/chart.js/dist")));
     app.locals.GOOGLE_ANALYTICS_ID = process.env.GOOGLE_ANALYTICS_ID || null;
 
-    /** --------------------------
-     * SECURITY ROUTES
-     * -------------------------- */
     app.all(['/admin', '/admin/'], async (req, res) => {
         try {
             await Alert.create({ ip: req.ip, userAgent: req.headers['user-agent'], pathAttempted: req.originalUrl });
@@ -495,7 +522,6 @@ async function startServer() {
         res.status(403).send('Forbidden');
     });
 
-    // ── trackViews: ONE analytics record per unique visitor session ───────────
     const trackViews = async (req, res, next) => {
         try {
             if (!req.session.viewTracked) {
@@ -511,9 +537,6 @@ async function startServer() {
         next();
     };
 
-    /** --------------------------
-     * PUBLIC ROUTES
-     * -------------------------- */
     app.get("/", trackViews, (req, res) => {
         const indexPath = path.join(__dirname, "public", "index.html");
         fs.readFile(indexPath, 'utf8', (err, data) => {
@@ -529,25 +552,19 @@ async function startServer() {
 
     app.use("/", express.static(path.join(__dirname, "public")));
 
-    app.get("/login",  userController.getLogin);
+    app.get("/login",   userController.getLogin);
     app.post("/login",  loginLimiter, userController.postLogin);
     app.get("/logout",  userController.logout);
     app.get("/signup",  userController.getSignup);
     app.post("/signup", loginLimiter, userController.postSignup);
 
-    app.get("/account",                    passportConfig.isAuthenticated, userController.getAccount);
-    app.post("/account/profile",           passportConfig.isAuthenticated, userController.postUpdateProfile);
-    app.post("/account/password",          passportConfig.isAuthenticated, userController.postUpdatePassword);
-    app.post("/account/delete",            passportConfig.isAuthenticated, userController.postDeleteAccount);
-    app.get("/account/unlink/:provider",   passportConfig.isAuthenticated, userController.getOauthUnlink);
+    app.get("/account",                  passportConfig.isAuthenticated, userController.getAccount);
+    app.post("/account/profile",         passportConfig.isAuthenticated, userController.postUpdateProfile);
+    app.post("/account/password",        passportConfig.isAuthenticated, userController.postUpdatePassword);
+    app.post("/account/delete",          passportConfig.isAuthenticated, userController.postDeleteAccount);
+    app.get("/account/unlink/:provider", passportConfig.isAuthenticated, userController.getOauthUnlink);
 
-    // ── QR Redirect: authenticated user update endpoint ───────────────────────
-    // Lusca validates the X-CSRF-Token header sent by the frontend fetch() call.
-    app.put(
-        '/dashboard/update-destination',
-        passportConfig.isAuthenticated,
-        updateDestination
-    );
+    app.put('/dashboard/update-destination', passportConfig.isAuthenticated, updateDestination);
 
     app.get("/home",     homeController.index);
     app.get("/contact",  strictLimiter, contactController.getContact);
@@ -562,10 +579,8 @@ async function startServer() {
             const { fullName, email, phone, message } = req.body;
             if (!fullName || !phone || !message) return res.status(400).json({ success: false, message: "All fields are required." });
             if (fullName.length > 100 || message.length > 500) return res.status(400).json({ success: false, message: "Input too long." });
-
             const lastContact = await Contact.findOne().sort({ messageNumber: -1 });
             const nextNumber  = (lastContact?.messageNumber) ? lastContact.messageNumber + 1 : 1;
-
             await new Contact({ fullName, email: email || null, phone, message, messageNumber: nextNumber }).save();
             res.json({ success: true, message: `Message #${nextNumber} saved successfully!`, messageNumber: nextNumber });
         } catch (err) {
@@ -578,13 +593,10 @@ async function startServer() {
         try {
             const { name, stars, review_text, profile_pic } = req.body;
             const recaptcha_token = req.body['g-recaptcha-response'] || req.body.recaptcha_token;
-
             if (!name || !stars || !review_text) return res.json({ success: false, message: 'All fields required' });
             if (!recaptcha_token) return res.json({ success: false, message: 'Please complete the CAPTCHA' });
-
             const verification = await verifyRecaptchaToken(recaptcha_token, req.ip);
             if (!verification.success) return res.json({ success: false, message: 'CAPTCHA failed verification' });
-
             await new Review({ name, stars: parseInt(stars), review_text, profile_pic: profile_pic || undefined }).save();
             res.json({ success: true, message: "Review saved successfully" });
         } catch (err) {
@@ -660,27 +672,19 @@ async function startServer() {
      * -------------------------- */
     app.get(['/shop', '/shop/collections', '/shop/collections/:slug'], shopController.getShopPage);
     app.get('/shop/status', shopController.getShopStatusPage);
-
     app.get('/api/products',          shopController.getProducts);
     app.get('/api/products/:slug',    shopController.getProductBySlug);
-
     app.get('/api/sold-counts',       shopController.getSoldCounts);
     app.get('/api/sold-counts/:slug', shopController.getSoldCountBySlug);
-
     app.post('/create-checkout-session', shopController.createCheckoutSession);
     app.get('/api/verify-session',       shopController.verifySession);
 
     /** --------------------------
      * QR CODE CATCH-ALL REDIRECT
      * MUST be last GET route before the 404 handler.
-     * Skips static file extensions and reserved prefixes so it never
-     * shadows real routes. Security: only active documents are served;
-     * ownerId / canEdit are never exposed to the scanner.
      * -------------------------- */
     app.get('/:route', async (req, res, next) => {
         const { route } = req.params;
-
-        // Skip anything that looks like a file or a reserved path segment
         if (
             route.startsWith('admin') ||
             route.startsWith('api') ||
@@ -694,18 +698,11 @@ async function startServer() {
             const qrRoute = await QRRedirect.findOne({ route, active: true }).lean();
             if (!qrRoute) return next();
 
-            // Ensure destination has a protocol
             let dest = qrRoute.destination_url;
-            if (!dest.startsWith('http')) {
-                dest = 'https://' + dest;
-            }
+            if (!dest.startsWith('http')) dest = 'https://' + dest;
 
             const delay = parseInt(qrRoute.redirect_delay_seconds ?? 5, 10);
-
-            // Zero-delay: skip the interim page entirely
-            if (delay <= 0) {
-                return res.redirect(dest);
-            }
+            if (delay <= 0) return res.redirect(dest);
 
             return res.send(`<!DOCTYPE html>
 <html lang="en">
@@ -714,69 +711,37 @@ async function startServer() {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>${qrRoute.page_title || 'Redirecting to ' + (qrRoute.company_name || 'us')}...</title>
     <style>
-      body {
-        margin: 0; padding: 0; display: flex; justify-content: center; align-items: center;
-        height: 100vh; font-family: 'Segoe UI', Arial, sans-serif;
-        background: #f8f9fa; color: #333;
-      }
-      .card {
-        background: white; padding: 40px; border-radius: 20px; text-align: center;
-        box-shadow: 0 10px 30px rgba(0,0,0,0.1); max-width: 400px; width: 90%;
-        background-image: url('https://upload.wikimedia.org/wikipedia/commons/c/c1/Google_%22G%22_logo.svg');
-        background-repeat: no-repeat; background-position: top 20px center;
-        background-size: 50px; padding-top: 80px;
-        text-decoration: none; color: inherit; display: block;
-        transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
-      }
-      a.card:hover {
-        transform: scale(1.02);
-        box-shadow: 0 15px 35px rgba(0,0,0,0.15);
-        cursor: pointer;
-      }
-      h1 { font-size: 1.5rem; margin-bottom: 10px; }
-      .message { font-size: 1.1rem; color: #666; margin-bottom: 20px; }
-      .redirect-text { font-size: 1.1rem; display: flex; justify-content: center; align-items: center; gap: 6px; }
-      .timer-container { display: inline-flex; justify-content: center; align-items: center; width: 1.2rem; height: 1.5rem; }
-      .timer { font-weight: 800; color: #1a73e8; }
-      .manual-link { font-size: 0.85rem; color: #aaa; margin-top: 5px; display: none; border-top: 1px solid #eee; padding-top: 10px; }
-      @keyframes fadeInDown { 0% { opacity: 0; transform: translateY(-5px); } 100% { opacity: 1; transform: translateY(0); } }
-      .animate-fade { animation: fadeInDown 0.4s ease-out; }
-      .dots::after { content: ''; animation: dots 1.5s infinite; }
-      @keyframes dots { 0% { content: ''; } 33% { content: '.'; } 66% { content: '..'; } 100% { content: '...'; } }
+      body { margin:0;padding:0;display:flex;justify-content:center;align-items:center;height:100vh;font-family:'Segoe UI',Arial,sans-serif;background:#f8f9fa;color:#333; }
+      .card { background:white;padding:40px;border-radius:20px;text-align:center;box-shadow:0 10px 30px rgba(0,0,0,0.1);max-width:400px;width:90%;background-image:url('https://upload.wikimedia.org/wikipedia/commons/c/c1/Google_%22G%22_logo.svg');background-repeat:no-repeat;background-position:top 20px center;background-size:50px;padding-top:80px;text-decoration:none;color:inherit;display:block;transition:transform 0.2s ease-in-out,box-shadow 0.2s ease-in-out; }
+      a.card:hover { transform:scale(1.02);box-shadow:0 15px 35px rgba(0,0,0,0.15);cursor:pointer; }
+      h1 { font-size:1.5rem;margin-bottom:10px; }
+      .message { font-size:1.1rem;color:#666;margin-bottom:20px; }
+      .redirect-text { font-size:1.1rem;display:flex;justify-content:center;align-items:center;gap:6px; }
+      .timer-container { display:inline-flex;justify-content:center;align-items:center;width:1.2rem;height:1.5rem; }
+      .timer { font-weight:800;color:#1a73e8; }
+      .manual-link { font-size:0.85rem;color:#aaa;margin-top:5px;display:none;border-top:1px solid #eee;padding-top:10px; }
+      @keyframes fadeInDown { 0%{opacity:0;transform:translateY(-5px);}100%{opacity:1;transform:translateY(0);} }
+      .animate-fade { animation:fadeInDown 0.4s ease-out; }
+      .dots::after { content:'';animation:dots 1.5s infinite; }
+      @keyframes dots { 0%{content:'';}33%{content:'.';}66%{content:'..';}100%{content:'...';} }
     </style>
   </head>
   <body>
-    <a href="${dest}" class="card" id="redirectLink">
+    <a href="${dest}" class="card">
       <h1>${qrRoute.page_title || 'We appreciate your feedback'}</h1>
       <p class="message">${qrRoute.display_message || 'Thanks for scanning.'}</p>
       <div id="countdown-area">
-        <div class="redirect-text">
-          Redirecting in
-          <span class="timer-container"><span class="timer" id="count">${delay}</span></span>
-          seconds<span style="width:1.5rem;text-align:left;"><span class="dots"></span></span>
-        </div>
+        <div class="redirect-text">Redirecting in <span class="timer-container"><span class="timer" id="count">${delay}</span></span> seconds<span style="width:1.5rem;text-align:left;"><span class="dots"></span></span></div>
       </div>
       <div id="manual-link" class="manual-link">Click to go to Review Page</div>
     </a>
     <script>
-      let c = ${delay};
-      const timer = document.getElementById('count');
-      const countdownArea = document.getElementById('countdown-area');
-      const manualLink = document.getElementById('manual-link');
-      const interval = setInterval(() => {
-        c--;
-        if (c > 0) {
-          timer.textContent = c;
-          timer.classList.remove('animate-fade');
-          void timer.offsetWidth;
-          timer.classList.add('animate-fade');
-        } else {
-          clearInterval(interval);
-          countdownArea.style.display = 'none';
-          manualLink.style.display = 'block';
-        }
-      }, 1000);
-      setTimeout(() => { window.location.href = '${dest}'; }, ${delay * 1000});
+      let c=${delay};
+      const timer=document.getElementById('count');
+      const ca=document.getElementById('countdown-area');
+      const ml=document.getElementById('manual-link');
+      const iv=setInterval(()=>{c--;if(c>0){timer.textContent=c;timer.classList.remove('animate-fade');void timer.offsetWidth;timer.classList.add('animate-fade');}else{clearInterval(iv);ca.style.display='none';ml.style.display='block';}},1000);
+      setTimeout(()=>{window.location.href='${dest}';},${delay*1000});
     </script>
   </body>
 </html>`);
@@ -786,18 +751,13 @@ async function startServer() {
         }
     });
 
-    // ── 404 & Error Handlers ──────────────────────────────────────────────────
     app.use((req, res) => res.status(404).send("Page Not Found"));
     if (!IS_PRODUCTION) app.use(errorHandler());
 
-    /** --------------------------
-     * HTTP SERVER + WEBSOCKETS
-     * -------------------------- */
     const server = app.listen(app.get("port"), () => {
         console.log(`🚀 Server running at http://localhost:${app.get("port")}`);
         console.log(`🛡️  Admin panel → http://localhost:${app.get("port")}${ADMIN_PATH}`);
         console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
-
         shopController.verifyEmailConnection();
         console.log(`    Shop checkout   : ${shopController.STRIPE_READY  ? '✅  ready' : '⚠️  dev mode (Stripe keys missing)'}`);
         console.log(`    Shop webhooks   : ${shopController.WEBHOOK_READY ? '✅  ready' : '⚠️  disabled (STRIPE_WEBHOOK_SECRET not set)'}`);
