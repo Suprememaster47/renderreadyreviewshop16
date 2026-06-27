@@ -1,0 +1,208 @@
+:root { --accent: #fff; }
+body { margin: 0; font-family: 'Inter', sans-serif; background: #000; color: #fff; overflow-x: hidden; }
+.acme-hidden { display: none !important; }
+
+/* ─── Background & Intro ──────────────────────────────────────────────────── */
+#canvas-container { position: fixed; inset: 0; z-index: -1; background: #000; }
+#intro-view {
+    position: fixed; inset: 0; z-index: 2000; display: flex; flex-direction: column;
+    justify-content: center; align-items: center; background: rgba(0,0,0,0.8);
+    transition: opacity 0.5s ease;
+}
+.intro-logo { font-size: 4rem; letter-spacing: 12px; font-weight: 900; margin-bottom: 40px; text-shadow: 0 0 20px #fff; }
+.intro-btn {
+    background: rgba(255,255,255,0.05); color: #fff; border: 1px solid rgba(255,255,255,0.3);
+    padding: 16px; width: 260px; margin-bottom: 12px; font-weight: 600; text-transform: uppercase;
+    cursor: pointer; transition: 0.4s; backdrop-filter: blur(8px);
+}
+.intro-btn:hover { background: #fff; color: #000; box-shadow: 0 0 30px #fff; transform: translateY(-3px); }
+
+/* ─── Navigation ─────────────────────────────────────────────────────────── */
+.acme-nav {
+    border-bottom: 1px solid #eee; padding: 0.75rem 1.5rem;
+    position: sticky; top: 0; background: #fff; z-index: 1000; color: #000;
+}
+.acme-nav-inner {
+    max-width: 1400px; margin: 0 auto;
+    display: flex; align-items: center; gap: 12px;
+}
+
+/* Logo — never shrinks, never clips */
+.acme-logo {
+    font-weight: 800; cursor: pointer; letter-spacing: 1px;
+    white-space: nowrap; flex-shrink: 0;
+}
+
+/* Search — fills the middle but can shrink to near-zero so cart is never pushed off */
+.search-wrapper {
+    position: relative;
+    flex: 1 1 0;   /* grow and shrink freely */
+    min-width: 0;  /* allows shrinking below content width */
+}
+.acme-search-input {
+    width: 100%; padding: 8px 12px; box-sizing: border-box;
+    border: 1px solid #ddd; border-radius: 8px; outline: none; font-size: 0.85rem;
+}
+
+/* Cart — never shrinks, always fully visible */
+.cart-label {
+    white-space: nowrap; flex-shrink: 0;
+    cursor: pointer; font-weight: 900; font-size: 0.9rem;
+}
+
+/* ─── Search Dropdown ────────────────────────────────────────────────────── */
+.search-results-dropdown {
+    position: absolute; top: 105%; left: 0; width: 100%; background: #fff;
+    border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+    z-index: 1100; max-height: 300px; overflow-y: auto; border: 1px solid #eee;
+}
+.search-item { display: flex; align-items: center; gap: 10px; padding: 10px; cursor: pointer; border-bottom: 1px solid #f0f0f0; }
+.search-item img { width: 40px; height: 40px; object-fit: cover; border-radius: 4px; }
+
+/* ─── Filter Underlines ──────────────────────────────────────────────────── */
+.filter-header { display: flex; gap: 40px; margin-top: 30px; border-bottom: 1px solid #222; padding-bottom: 20px; }
+.filter-group ul { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 10px; }
+.filter-group li { cursor: pointer; font-size: 0.85rem; color: #888; transition: 0.3s; width: fit-content; position: relative; }
+.filter-group li::after { content: ''; position: absolute; bottom: -2px; left: 0; width: 0; height: 1px; background: #fff; transition: 0.3s; }
+.filter-group li:hover, .filter-group li.active { color: #fff; }
+.filter-group li:hover::after, .filter-group li.active::after { width: 100%; }
+
+/* ─── Product Grid ───────────────────────────────────────────────────────── */
+/*
+    Desktop default: exactly 4 columns across, filling the full container.
+    Breakpoints below drop this to 2 columns on narrow screens.
+*/
+.acme-landing-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1.25rem;
+    padding: 20px 0;
+}
+
+.acme-card {
+    background: rgba(0,0,0,0.8); border: 1px solid #333; border-radius: 12px; padding: 12px;
+    cursor: pointer; opacity: 0; transform: translateY(30px);
+    transition: border-color 0.3s ease, transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+.acme-card:hover { border-color: #fff; transform: translateY(-10px); }
+.acme-card img { width: 100%; aspect-ratio: 1/1; object-fit: cover; border-radius: 6px; }
+.fade-up-active { animation: fadeUp 0.6s ease forwards; }
+@keyframes fadeUp { to { opacity: 1; transform: translateY(0); } }
+
+/* ─── PDP Transition Animations ─────────────────────────────────────────── */
+#pdp-view.pdp-enter { animation: pdpSlideIn 0.45s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
+@keyframes pdpSlideIn {
+    from { opacity: 0; transform: translateY(24px) scale(0.98); }
+    to   { opacity: 1; transform: translateY(0)   scale(1);    }
+}
+#shop-home.pdp-exit { animation: shopFadeOut 0.2s ease forwards; }
+@keyframes shopFadeOut {
+    from { opacity: 1; transform: translateY(0); }
+    to   { opacity: 0; transform: translateY(-12px); }
+}
+
+/* ─── PDP Layout ─────────────────────────────────────────────────────────── */
+.acme-pdp-main {
+    display: grid; grid-template-columns: 55% 45%; gap: 15px;
+    background: rgba(0,0,0,0.9); padding: 25px; border-radius: 15px; border: 1px solid #333;
+    align-items: start; min-width: 0;
+}
+.acme-gallery { width: 100%; }
+.acme-main-frame { width: 100%; aspect-ratio: 1/1; border-radius: 8px; overflow: hidden; border: 1px solid #444; margin-bottom: 10px; }
+.acme-main-frame img { width: 100%; height: 100%; object-fit: cover; }
+.acme-thumbs { display: flex; gap: 8px; flex-wrap: wrap; }
+.thumb-img { width: 45px; height: 45px; border-radius: 4px; cursor: pointer; border: 1px solid transparent; opacity: 0.5; object-fit: cover; transition: 0.2s; }
+.thumb-img.active { border-color: #fff; opacity: 1; }
+
+.acme-details { width: 100%; padding-left: 10px; padding-right: 15px; box-sizing: border-box; }
+.acme-details h1 { font-size: 1.4rem; margin: 0; letter-spacing: -1px; line-height: 1.1; }
+.price-pill { background: #fff; color: #000; padding: 4px 10px; border-radius: 15px; font-weight: 900; font-size: 0.75rem; display: inline-block; margin: 10px 0; }
+
+/* ─── Variant Buttons with Hover Glow ───────────────────────────────────── */
+.variant-container { margin-bottom: 15px; }
+.variant-label { font-size: 0.65rem; color: #777; text-transform: uppercase; margin-bottom: 8px; font-weight: 800; }
+.variant-btns { display: flex; flex-wrap: wrap; gap: 5px; }
+.acme-opt-btn {
+    position: relative; padding: 6px 12px; border: 1px solid #444; border-radius: 20px;
+    background: transparent; color: #fff; cursor: pointer; font-size: 0.7rem;
+    transition: border-color 0.25s ease, box-shadow 0.25s ease, color 0.25s ease;
+}
+.acme-opt-btn:hover:not(.active) {
+    border-color: #fff; color: #fff;
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.15), 0 0 8px 2px rgba(255,255,255,0.12), 0 0 18px 4px rgba(255,255,255,0.07);
+}
+.acme-opt-btn.active { background: #fff; color: #000; border-color: #fff; box-shadow: none; }
+
+/* ─── Add to Cart + Back ─────────────────────────────────────────────────── */
+.add-btn { width: 90%; background: #fff; color: #000; border: none; padding: 14px; border-radius: 30px; cursor: pointer; font-weight: 900; font-size: 0.8rem; margin-top: 10px; text-transform: uppercase; transition: 0.3s; }
+.add-btn:hover { transform: scale(1.02); background: #eee; }
+.back-link { margin-top: 15px; cursor: pointer; text-decoration: underline; font-size: 0.65rem; opacity: 0.5; font-weight: 700; display: block; }
+
+/* ─── Related Products Marquee ───────────────────────────────────────────── */
+.related-section-title { margin-top: 40px; font-size: 0.7rem; color: #555; text-transform: uppercase; letter-spacing: 3px; border-bottom: 1px solid #222; padding-bottom: 10px; }
+.marquee-container { width: 100%; overflow: hidden; margin-top: 20px; padding-bottom: 40px; }
+.marquee-track { display: flex; gap: 15px; animation: scrollLeft 30s linear infinite; width: max-content; }
+@keyframes scrollLeft { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+.marquee-item { width: 160px; height: 160px; flex-shrink: 0; border-radius: 10px; overflow: hidden; border: 1px solid #333; cursor: pointer; transition: 0.3s; }
+.marquee-item:hover { border-color: #fff; }
+.marquee-item img { width: 100%; height: 100%; object-fit: cover; }
+
+/* ─── Cart Drawer ────────────────────────────────────────────────────────── */
+.cart-drawer { position: fixed; right: 0; top: 0; height: 100%; width: 350px; max-width: 100%; background: #fff; color: #000; z-index: 5000; transform: translateX(100%); transition: 0.4s; padding: 30px; display: flex; flex-direction: column; box-sizing: border-box; }
+.cart-drawer.open { transform: translateX(0); }
+
+/* ─── Cart Item Row ───────────────────────────────────────────────────────── */
+.cart-item-row { display: flex; gap: 10px; margin-bottom: 14px; align-items: center; }
+
+.cart-item-thumb { position: relative; flex-shrink: 0; width: 50px; height: 50px; }
+.cart-item-thumb img { width: 100%; height: 100%; border-radius: 6px; object-fit: cover; display: block; }
+
+.cart-remove-btn {
+    position: absolute; top: -7px; right: -7px;
+    width: 20px; height: 20px; border-radius: 50%;
+    background: rgba(215, 215, 215, 0.97);
+    border: none; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 9px; font-weight: 900; color: #444; line-height: 1;
+    transition: background 0.2s ease, transform 0.15s ease;
+    padding: 0; box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+.cart-remove-btn:hover { background: #bbb; transform: scale(1.15); }
+
+.cart-item-info { flex: 1; min-width: 0; }
+.cart-item-name { font-weight: 700; font-size: 0.8rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cart-item-meta { font-size: 0.7rem; color: #777; margin-top: 2px; }
+.cart-item-price { font-weight: 700; font-size: 0.8rem; flex-shrink: 0; }
+
+/* ─── Checkout Button ────────────────────────────────────────────────────── */
+#checkout-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+/* ─── Responsive Breakpoints ─────────────────────────────────────────────── */
+
+/* Tablet: 3 columns between 700px and 1024px */
+@media (max-width: 1024px) and (min-width: 701px) {
+    .acme-landing-grid {
+        grid-template-columns: repeat(3, 1fr);
+    }
+}
+
+/* Mobile: exactly 2 columns at 700px and below */
+@media (max-width: 700px) {
+    .acme-landing-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 0.75rem;
+    }
+
+    /* Single-column PDP on small screens */
+    .acme-pdp-main { grid-template-columns: 1fr; }
+    .acme-details { padding-left: 0; padding-right: 0; }
+
+    /* Tighter nav padding on mobile */
+    .acme-nav { padding: 0.6rem 0.75rem; }
+    .acme-nav-inner { gap: 8px; }
+    .acme-logo { font-size: 0.82rem; }
+    .cart-label { font-size: 0.78rem; }
+
+    /* Slightly smaller card text on mobile */
+    .acme-card { padding: 8px; }
+}

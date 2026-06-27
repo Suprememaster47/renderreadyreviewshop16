@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ACME STORE</title>
+    <link rel="stylesheet" href="/shop-style.css">
+    <!--
+        FLASH FIX: synchronous inline script runs before first paint.
+        Hides the intro immediately on any non-/shop path so there is
+        zero flicker when visiting a product deep-link directly.
+    -->
+    <script>
+        (function () {
+            if (window.location.pathname !== '/shop') {
+                document.documentElement.style.setProperty('--intro-display', 'none');
+            }
+        }());
+    </script>
+    <style>
+        #intro-view { display: var(--intro-display, flex); }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/vanta@latest/dist/vanta.clouds.min.js"></script>
+</head>
+<body>
+    <div id="canvas-container"></div>
+
+    <!-- ── Intro Screen (/shop) ────────────────────────────────────────── -->
+    <div id="intro-view">
+        <div class="intro-logo">Welcome</div>
+        <button class="intro-btn" onclick="enterShop()">Shop Now</button>
+        <button class="intro-btn">Archives</button>
+    </div>
+
+    <!-- ── Shop View (/shop/collections and /shop/collections/:slug) ─── -->
+    <div id="shop-view" class="acme-hidden" style="opacity:0; transition: opacity 0.5s;">
+        <nav class="acme-nav">
+            <div class="acme-nav-inner">
+                <div onclick="exitToIntro()" class="acme-logo">▲ HYDRO SWEEP SERVICES LLC. STORE</div>
+
+                <div class="search-wrapper">
+                    <input
+                        type="text"
+                        id="acme-search-bar"
+                        class="acme-search-input"
+                        placeholder="Search..."
+                        autocomplete="off"
+                        maxlength="100"
+                    >
+                    <div id="search-dropdown" class="search-results-dropdown acme-hidden"></div>
+                </div>
+
+                <div onclick="toggleCart(true)" class="cart-label">CART&nbsp;[<span id="cart-count">0</span>]</div>
+            </div>
+        </nav>
+
+        <main style="max-width:1200px; margin: auto; padding: 0 15px;">
+
+            <!-- Collections grid -->
+            <div id="shop-home">
+                <div class="filter-header">
+                    <div class="filter-group"><h4>Collections</h4><ul id="cat-filters"></ul></div>
+                    <div class="filter-group"><h4>Sort By</h4><ul id="sort-filters"></ul></div>
+                </div>
+                <div class="acme-landing-grid" id="search-grid"></div>
+            </div>
+
+            <!-- Product Detail Page -->
+            <div id="pdp-view" class="acme-hidden">
+                <div class="acme-pdp-main">
+                    <div class="acme-gallery">
+                        <div class="acme-main-frame"><img id="pdp-img" src="" alt="Product image"></div>
+                        <div id="pdp-thumbs" class="acme-thumbs"></div>
+                    </div>
+                    <div class="acme-details">
+                        <h1 id="pdp-title"></h1>
+                        <div id="pdp-price" class="price-pill"></div>
+                        <div id="variant-area"></div>
+                        <button onclick="addToCart()" class="add-btn">ADD TO CART</button>
+
+                        <!--
+                            Sold count display.
+                            Sits between ADD TO CART and BACK TO COLLECTION.
+                            Populated and shown/hidden by renderPDP() in shop-script.js.
+                            Only visible when units_sold > 0 — new products show nothing.
+                            Data source: MongoDB Atlas "sold" collection via /api/sold-counts.
+                        -->
+                        <span
+                            id="pdp-sold-count"
+                            style="display:none; text-align:center; font-size:0.68rem;
+                                   color:#555; font-weight:600; letter-spacing:0.5px;
+                                   margin-top:8px;"
+                        ></span>
+
+                        <span onclick="closePDP()" class="back-link">← BACK TO COLLECTION</span>
+                    </div>
+                </div>
+                <div class="related-section-title">Related Products</div>
+                <div class="marquee-container">
+                    <div id="related-marquee" class="marquee-track"></div>
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <!-- ── Cart Drawer ───────────────────────────────────────────────────── -->
+    <div id="cart-drawer" class="cart-drawer">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+            <h2 style="margin:0;">Bag</h2>
+            <span onclick="toggleCart(false)" style="cursor:pointer; font-size:1.2rem;">✕</span>
+        </div>
+        <div id="cart-items" style="flex:1; overflow-y:auto; margin:20px 0; padding-top:10px;"></div>
+        <div style="border-top:1px solid #eee; padding-top:20px;">
+            <div style="display:flex; justify-content:space-between; font-weight:900; margin-bottom:15px;">
+                <span>Total</span>
+                <span id="cart-total">$0.00</span>
+            </div>
+            <button
+                id="checkout-btn"
+                onclick="startCheckout()"
+                style="width:100%; background:#000; color:#fff; border:none; padding:15px;
+                       border-radius:30px; font-weight:900; cursor:pointer; font-size:0.9rem;
+                       text-transform:uppercase; transition:background 0.3s;"
+                onmouseover="this.style.background='#222'"
+                onmouseout="this.style.background='#000'"
+            >CHECKOUT</button>
+        </div>
+    </div>
+
+    <script src="/shop-script.js"></script>
+</body>
+</html>

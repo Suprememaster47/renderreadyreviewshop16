@@ -1,0 +1,72 @@
+go to table QRcoderedirect1, Use this json file below in MongoDB Atlas. Create this directory path, Cluster login1, Database test, Table QRcoderedirect1
+Then click + ADD DATA, insert document. Then paste this json file below
+
+If you want to assign two QR urls to the same account, use this format and get the user id of account from table users
+
+{
+  "_id": {
+    "$oid": "6a3d1ee4630d1f0c1e5eabf9"
+  },
+  "route": "Fd3kP4",
+  "company_name": "Review Generation Campaign",
+  "hardcoded_url": "localhost:8080/Fd3kP4",
+  "destination_url": "https://hydrosweepservices.com/contact.html",
+  "redirect_delay_seconds": 5,
+  "display_message": "Thanks for scanning! Auto Redirecting to Google review...",
+  "active": true,
+  "page_title": "We appreciate your feedback!",
+  "ownerId": {
+    "$oid": "690bcb55304a2e8ee999b7da"
+  },
+  "canEdit": true,
+  "createdAt": {
+    "$date": "2026-06-25T11:30:00.000Z"
+  }
+}
+
+
+
+{
+  "_id": {
+    "$oid": "6a3f6f9677f35e2d371c2c3d"
+  },
+  "route": "whatsupguys",
+  "company_name": "Review Generation Campaign",
+  "hardcoded_url": "localhost:8080/whatsupguys",
+  "destination_url": "https://hydrosweepservices.com/contact.html",
+  "redirect_delay_seconds": 3,
+  "display_message": "Thanks for scanning! Auto Redirecting to Google review...",
+  "active": true,
+  "page_title": "We appreciate your feedback!",
+  "ownerId": {
+    "$oid": "690bcb55304a2e8ee999b7da"
+  },
+  "canEdit": true,
+  "createdAt": {
+    "$date": "2026-06-26T00:00:00.000Z"
+  }
+}
+
+
+
+
+
+If you want to code a route and theres no account assigned,
+
+
+{
+  "_id": {
+    "$oid": "6a3d501256064463dcb98c9b"
+  },
+  "route": "freereview",
+  "company_name": "Review Generation Campaign",
+  "page_title": "Thx for the review",
+  "hardcoded_url": "localhost:8080/freereview",
+  "destination_url": "https://hydrosweepservices.com/contact.html",
+  "redirect_delay_seconds": 3,
+  "display_message": "Leave us a review! :)",
+  "active": true,
+  "createdAt": {
+    "$date": "2026-06-25T19:09:28.041Z"
+  }
+}
